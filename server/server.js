@@ -33,7 +33,7 @@ app.post('/api/logs/bulk', async (req, res) => {
         const result = await Log.insertMany(logs, { ordered: false });
         res.json({ inserted: result.length });
     } catch (err) {
-        ...
+  
     }
 });
 

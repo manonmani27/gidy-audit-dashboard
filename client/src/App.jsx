@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import './App.css'
-
-const API = 'http://localhost:5000/api'
+const API = 'https://gidy-audit-dashboard-lrx8.onrender.com/api'
 
 const SEVERITY_COLORS = {
   CRITICAL: { bg: '#fde8ef', color: '#8b1a3a' },

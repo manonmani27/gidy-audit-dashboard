@@ -27,17 +27,14 @@ const logSchema = new mongoose.Schema({
 const Log = mongoose.model('Log', logSchema);
 
 app.post('/api/logs/bulk', async (req, res) => {
-  try {
-    const logs = req.body.logs;
-    if (!Array.isArray(logs) || logs.length === 0)
-      return res.status(400).json({ error: 'logs array required' });
-    if (logs.length > 10000)
-      return res.status(400).json({ error: 'Max 10,000 records' });
-    const result = await Log.insertMany(logs, { ordered: false });
-    res.status(201).json({ message: `Inserted ${result.length} records`, count: result.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    try {
+        const logs = req.body; // or wherever your data comes from
+        await Log.deleteMany({});
+        const result = await Log.insertMany(logs, { ordered: false });
+        res.json({ inserted: result.length });
+    } catch (err) {
+        ...
+    }
 });
 
 app.get('/api/logs', async (req, res) => {

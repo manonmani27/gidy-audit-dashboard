@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import './App.css'
+
 const API = 'https://gidy-audit-dashboard-lrx8.onrender.com/api'
 
 const SEVERITY_COLORS = {
@@ -19,7 +20,7 @@ export default function App() {
   const [logs, setLogs] = useState([])
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 })
   const [stats, setStats] = useState({ total: 0, bySeverity: [], byStatus: [] })
-  const [filters, setFilters] = useState({ search: '', severity: '', status: '', region: '', role: '' })
+  const [filters, setFilters] = useState({ search: '', severity: '', status: '', region: '', role: '', fromDate: '', toDate: '' })
   const [sortBy, setSortBy] = useState('timestamp')
   const [sortOrder, setSortOrder] = useState('desc')
   const [page, setPage] = useState(1)
@@ -58,11 +59,33 @@ export default function App() {
     setPage(1)
   }
 
+  const clearFilters = () => {
+    setFilters({ search: '', severity: '', status: '', region: '', role: '', fromDate: '', toDate: '' })
+    setPage(1)
+  }
+
   const toggleStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'Unresolved' ? 'Resolved' : 'Unresolved'
     await axios.patch(`${API}/logs/${id}`, { status: newStatus })
     fetchLogs(); fetchStats()
     setSelected(null)
+  }
+
+  const exportCSV = () => {
+    if (logs.length === 0) return alert('No logs to export!')
+    const headers = ['Timestamp', 'Actor', 'Role', 'Action', 'Resource', 'ResourceType', 'IP Address', 'Region', 'Severity', 'Status']
+    const rows = logs.map(l => [
+      new Date(l.timestamp).toLocaleString(),
+      l.actor, l.role, l.action, l.resource,
+      l.resourceType, l.ipAddress, l.region, l.severity, l.status
+    ])
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'audit-logs.csv'
+    a.click()
   }
 
   const generateAndUpload = async () => {
@@ -94,22 +117,39 @@ export default function App() {
   }
 
   const sortIcon = (field) => sortBy === field ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : ''
-
   const getStat = (arr, key) => arr.find(x => x._id === key)?.count || 0
+
+  // Chart bar component
+  const Bar = ({ label, value, total, color }) => (
+    <div style={{ marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
+        <span>{label}</span><span style={{ color }}>{value.toLocaleString()}</span>
+      </div>
+      <div style={{ background: '#f0f0f0', borderRadius: '4px', height: '8px' }}>
+        <div style={{ background: color, width: `${total ? (value/total)*100 : 0}%`, height: '8px', borderRadius: '4px', transition: 'width 0.5s' }} />
+      </div>
+    </div>
+  )
 
   return (
     <div style={{ fontFamily: 'system-ui', minHeight: '100vh', background: '#f8f9fa', color: '#1a1a1a' }}>
       {/* Header */}
       <div style={{ background: '#1a1a2e', color: 'white', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ fontSize: '18px', fontWeight: 600 }}>🛡️ Audit Log Dashboard</h1>
-        <button onClick={generateAndUpload} disabled={uploading}
-          style={{ background: '#4f46e5', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
-          {uploading ? 'Uploading...' : '⬆ Bulk Upload 10,000 Logs'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={exportCSV}
+            style={{ background: '#059669', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+            ⬇ Export CSV
+          </button>
+          <button onClick={generateAndUpload} disabled={uploading}
+            style={{ background: '#4f46e5', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+            {uploading ? 'Uploading...' : '⬆ Bulk Upload 10,000 Logs'}
+          </button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', padding: '1rem 1.5rem' }}>
+      {/* Stats + Charts */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.5fr', gap: '12px', padding: '1rem 1.5rem' }}>
         {[
           { label: 'Total Logs', value: stats.total, color: '#4f46e5' },
           { label: 'Critical', value: getStat(stats.bySeverity, 'CRITICAL'), color: '#8b1a3a' },
@@ -121,13 +161,21 @@ export default function App() {
             <div style={{ fontSize: '24px', fontWeight: 600, color: s.color }}>{s.value.toLocaleString()}</div>
           </div>
         ))}
+        {/* Severity Chart */}
+        <div style={{ background: 'white', borderRadius: '8px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize: '11px', color: '#666', marginBottom: '10px', fontWeight: 500 }}>SEVERITY BREAKDOWN</div>
+          <Bar label="Critical" value={getStat(stats.bySeverity,'CRITICAL')} total={stats.total} color="#8b1a3a" />
+          <Bar label="High" value={getStat(stats.bySeverity,'HIGH')} total={stats.total} color="#c0392b" />
+          <Bar label="Medium" value={getStat(stats.bySeverity,'MEDIUM')} total={stats.total} color="#e67e22" />
+          <Bar label="Low" value={getStat(stats.bySeverity,'LOW')} total={stats.total} color="#27ae60" />
+        </div>
       </div>
 
       {/* Filters */}
-      <div style={{ padding: '0 1.5rem 1rem', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      <div style={{ padding: '0 1.5rem 1rem', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         <input placeholder="Search actor, action, resource, IP..." value={filters.search}
           onChange={e => handleFilter('search', e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', width: '260px' }} />
+          style={{ padding: '7px 12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', width: '240px' }} />
         {[
           { key: 'severity', options: ['CRITICAL','HIGH','MEDIUM','LOW'], placeholder: 'All severities' },
           { key: 'status', options: ['Unresolved','Resolved'], placeholder: 'All statuses' },
@@ -140,6 +188,14 @@ export default function App() {
             {f.options.map(o => <option key={o}>{o}</option>)}
           </select>
         ))}
+        <input type="date" value={filters.fromDate} onChange={e => handleFilter('fromDate', e.target.value)}
+          style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }} />
+        <input type="date" value={filters.toDate} onChange={e => handleFilter('toDate', e.target.value)}
+          style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }} />
+        <button onClick={clearFilters}
+          style={{ padding: '7px 12px', borderRadius: '6px', border: '1px solid #ddd', background: 'white', fontSize: '13px', cursor: 'pointer' }}>
+          ✕ Clear
+        </button>
       </div>
 
       {/* Table */}
@@ -159,7 +215,7 @@ export default function App() {
             {loading ? (
               <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Loading...</td></tr>
             ) : logs.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>No logs found. Click "Bulk Upload" to add logs!</td></tr>
+              <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>No logs found.</td></tr>
             ) : logs.map(log => (
               <tr key={log._id} onClick={() => setSelected(log)}
                 style={{ borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
@@ -209,7 +265,7 @@ export default function App() {
               <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Log Detail</h2>
               <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#666' }}>×</button>
             </div>
-            {[['Actor', selected.actor],['Role', selected.role],['Action', selected.action],['Resource', selected.resource],['Resource Type', selected.resourceType],['IP Address', selected.ipAddress],['Region', selected.region],['Timestamp', new Date(selected.timestamp).toLocaleString()]].map(([k,v]) => (
+            {[['Actor',selected.actor],['Role',selected.role],['Action',selected.action],['Resource',selected.resource],['Resource Type',selected.resourceType],['IP Address',selected.ipAddress],['Region',selected.region],['Timestamp',new Date(selected.timestamp).toLocaleString()]].map(([k,v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f0f0f0', fontSize: '13px' }}>
                 <span style={{ color: '#666' }}>{k}</span>
                 <span style={{ fontWeight: 500 }}>{v}</span>
